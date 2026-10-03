@@ -1504,6 +1504,303 @@ document.addEventListener(
     setupAdmin();
 
     updateYear();
+  }
+);
+/* =====================================================
+   DRA. CAROLINA P. CURY — FIREBASE V3
+   Ponte preparada para Firestore
+   ===================================================== */
+
+window.CAROLINA_FIREBASE_CONFIG =
+  window.CAROLINA_FIREBASE_CONFIG || {
+    apiKey: "",
+    authDomain: "",
+    projectId: "carolinacury-adv",
+    storageBucket: "",
+    messagingSenderId: "",
+    appId: ""
+  };
+
+let firebaseDb = null;
+let firebaseConnected = false;
+
+
+/* =====================================================
+   CARREGAR SDK FIREBASE
+   ===================================================== */
+
+function loadFirebaseScript(src){
+
+  return new Promise(function(resolve, reject){
+
+    if(document.querySelector(
+      'script[src="' + src + '"]'
+    )){
+      resolve();
+      return;
+    }
+
+    const script =
+      document.createElement("script");
+
+    script.src = src;
+    script.onload = resolve;
+    script.onerror = reject;
+
+    document.head.appendChild(script);
+
+  });
+
+}
+
+
+/* =====================================================
+   INICIAR FIREBASE
+   ===================================================== */
+
+async function initializeCarolinaFirebase(){
+
+  const config =
+    window.CAROLINA_FIREBASE_CONFIG;
+
+  if(
+    !config ||
+    !config.apiKey ||
+    !config.projectId ||
+    !config.appId
+  ){
+
+    console.info(
+      "Firebase ainda não configurado. O site continuará usando o armazenamento local."
+    );
+
+    return false;
+
+  }
+
+
+  try{
+
+    await loadFirebaseScript(
+      "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"
+    );
+
+    await loadFirebaseScript(
+      "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"
+    );
+
+
+    if(!firebase.apps.length){
+
+      firebase.initializeApp(config);
+
+    }
+
+
+    firebaseDb =
+      firebase.firestore();
+
+    firebaseConnected = true;
+
+
+    console.log(
+      "Firebase conectado."
+    );
+
+
+    await loadSettingsFromFirebase();
+
+    return true;
+
+
+  }catch(error){
+
+    console.error(
+      "Erro ao conectar ao Firebase:",
+      error
+    );
+
+    firebaseConnected = false;
+
+    return false;
+
+  }
+
+}
+
+
+/* =====================================================
+   CARREGAR CONFIGURAÇÕES DO FIRESTORE
+   ===================================================== */
+
+async function loadSettingsFromFirebase(){
+
+  if(!firebaseDb){
+
+    return;
+
+  }
+
+
+  try{
+
+    const document =
+      await firebaseDb
+        .collection("site_settings")
+        .doc("main")
+        .get();
+
+
+    if(document.exists){
+
+      settings = {
+        ...DEFAULTS,
+        ...document.data()
+      };
+
+
+      applySettings();
+
+
+      console.log(
+        "Configurações carregadas do Firebase."
+      );
+
+    }else{
+
+      console.log(
+        "Documento site_settings/main ainda não existe."
+      );
+
+    }
+
+
+  }catch(error){
+
+    console.error(
+      "Erro ao carregar configurações do Firebase:",
+      error
+    );
+
+  }
+
+}
+
+
+/* =====================================================
+   SALVAR CONFIGURAÇÕES NO FIRESTORE
+   ===================================================== */
+
+async function saveSettingsToFirebase(){
+
+  if(!firebaseDb){
+
+    return false;
+
+  }
+
+
+  try{
+
+    const data = {
+      name: settings.name,
+      oab: settings.oab,
+      whatsapp: settings.whatsapp,
+      whatsappDisplay: settings.whatsappDisplay,
+      email: settings.email,
+      address: settings.address,
+      title: settings.title,
+      whatsappMessage: settings.whatsappMessage,
+      heroImage: settings.heroImage,
+      logoImage: settings.logoImage,
+      updated_at:
+        firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+
+    await firebaseDb
+      .collection("site_settings")
+      .doc("main")
+      .set(
+        data,
+        {
+          merge: true
+        }
+      );
+
+
+    console.log(
+      "Configurações salvas no Firebase."
+    );
+
+
+    return true;
+
+
+  }catch(error){
+
+    console.error(
+      "Erro ao salvar no Firebase:",
+      error
+    );
+
+    return false;
+
+  }
+
+}
+
+
+/* =====================================================
+   SUBSTITUIR SALVAMENTO DO ADMIN
+   ===================================================== */
+
+const oldSaveAdminSettingsV3 =
+  saveAdminSettings;
+
+
+saveAdminSettings = async function(){
+
+  processPendingImages();
+
+
+  oldSaveAdminSettingsV3();
+
+
+  if(firebaseConnected){
+
+    const savedFirebase =
+      await saveSettingsToFirebase();
+
+
+    if(savedFirebase){
+
+      showAdminStatus(
+        "Alterações salvas no Firebase."
+      );
+
+    }else{
+
+      showAdminStatus(
+        "Salvo localmente, mas não foi possível salvar no Firebase."
+      );
+
+    }
+
+  }
+
+};
+
+
+/* =====================================================
+   INICIALIZAÇÃO FIREBASE V3
+   ===================================================== */
+
+document.addEventListener(
+  "DOMContentLoaded",
+  function(){
+
+    initializeCarolinaFirebase();
 
   }
 );
