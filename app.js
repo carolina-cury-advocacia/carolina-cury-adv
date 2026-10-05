@@ -1,5 +1,6 @@
 /* =====================================================
-   DRA. CAROLINA P. CURY — APP.JS V2
+   DRA. CAROLINA P. CURY — APP.JS V4
+   Firebase + Firestore + Admin
    ===================================================== */
 
 const DEFAULTS = {
@@ -17,29 +18,56 @@ const DEFAULTS = {
     "Olá, Dra. Carolina! Gostaria de obter informações sobre atendimento jurídico.",
 
   heroImage:
-    "assets/carolina-hero.png",
+    "https://i.postimg.cc/wB5DmxdM/Gemini-Generated-Image-d721dhd721dhd721.jpg",
 
   logoImage:
-    ""
+    "https://i.postimg.cc/x8sctnws/IMG-20261002-WA0023.jpg"
 };
 
 
 /* =====================================================
-   CARREGAR CONFIGURAÇÃO
+   FIREBASE
+   ===================================================== */
+
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBvqNqGjG8IWSFhQRpNSIgLF0V540Xr-sg",
+  authDomain: "carolinacuryadv-f347d.firebaseapp.com",
+  projectId: "carolinacuryadv-f347d",
+  storageBucket: "carolinacuryadv-f347d.firebasestorage.app",
+  messagingSenderId: "61389745677",
+  appId: "1:61389745677:web:c64f35db063d52dc6daf44"
+};
+
+let firebaseDb = null;
+let firebaseAuth = null;
+let firebaseConnected = false;
+
+
+/* =====================================================
+   CONFIGURAÇÃO INICIAL
    ===================================================== */
 
 let settings = loadSettings();
 
+let practiceAreas = [];
 
-function loadSettings(){
+let mediaItems = [];
 
-  try{
 
-    const saved = localStorage.getItem(
-      "carolina_cury_site_settings"
-    );
+/* =====================================================
+   LOCAL STORAGE
+   ===================================================== */
 
-    if(saved){
+function loadSettings() {
+
+  try {
+
+    const saved =
+      localStorage.getItem(
+        "carolina_cury_site_settings"
+      );
+
+    if (saved) {
 
       return {
         ...DEFAULTS,
@@ -48,10 +76,10 @@ function loadSettings(){
 
     }
 
-  }catch(error){
+  } catch (error) {
 
     console.warn(
-      "Não foi possível carregar as configurações salvas.",
+      "Erro ao carregar configurações locais.",
       error
     );
 
@@ -60,17 +88,12 @@ function loadSettings(){
   return {
     ...DEFAULTS
   };
-
 }
 
 
-/* =====================================================
-   SALVAR CONFIGURAÇÃO
-   ===================================================== */
+function saveSettings() {
 
-function saveSettings(){
-
-  try{
+  try {
 
     localStorage.setItem(
       "carolina_cury_site_settings",
@@ -79,47 +102,473 @@ function saveSettings(){
 
     return true;
 
-  }catch(error){
+  } catch (error) {
 
     console.error(
-      "Não foi possível salvar as configurações.",
+      "Erro ao salvar configurações locais.",
       error
     );
 
     return false;
+  }
+}
+
+
+/* =====================================================
+   FIREBASE SDK
+   ===================================================== */
+
+function loadFirebaseScript(src) {
+
+  return new Promise(function(resolve, reject) {
+
+    if (
+      document.querySelector(
+        'script[src="' + src + '"]'
+      )
+    ) {
+
+      resolve();
+
+      return;
+    }
+
+    const script =
+      document.createElement("script");
+
+    script.src = src;
+
+    script.onload = resolve;
+
+    script.onerror = reject;
+
+    document.head.appendChild(script);
+
+  });
+}
+
+
+/* =====================================================
+   INICIALIZAR FIREBASE
+   ===================================================== */
+
+async function initializeCarolinaFirebase() {
+
+  try {
+
+    await loadFirebaseScript(
+      "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"
+    );
+
+    await loadFirebaseScript(
+      "https://www.gstatic.com/firebasejs/12.19.0/firebase-auth-compat.js"
+    );
+
+    await loadFirebaseScript(
+      "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"
+    );
+
+
+    if (!firebase.apps.length) {
+
+      firebase.initializeApp(
+        FIREBASE_CONFIG
+      );
+
+    }
+
+
+    firebaseAuth =
+      firebase.auth();
+
+    firebaseDb =
+      firebase.firestore();
+
+    firebaseConnected = true;
+
+
+    console.log(
+      "Firebase conectado com sucesso."
+    );
+
+
+    await loadSettingsFromFirebase();
+
+    await loadPracticeAreasFromFirebase();
+
+    await loadMediaFromFirebase();
+
+
+    return true;
+
+
+  } catch (error) {
+
+    console.error(
+      "Erro ao inicializar Firebase:",
+      error
+    );
+
+    firebaseConnected = false;
+
+    return false;
+  }
+}
+
+
+/* =====================================================
+   CARREGAR SITE_SETTINGS
+   ===================================================== */
+
+async function loadSettingsFromFirebase() {
+
+  if (!firebaseDb) return;
+
+  try {
+
+    const snapshot =
+      await firebaseDb
+        .collection("site_settings")
+        .limit(1)
+        .get();
+
+
+    if (!snapshot.empty) {
+
+      const data =
+        snapshot.docs[0].data();
+
+      settings = {
+        ...DEFAULTS,
+        ...data
+      };
+
+      applySettings();
+
+
+      console.log(
+        "site_settings carregado."
+      );
+
+    } else {
+
+      console.log(
+        "Nenhum documento encontrado em site_settings."
+      );
+
+    }
+
+  } catch (error) {
+
+    console.error(
+      "Erro ao carregar site_settings:",
+      error
+    );
+  }
+}
+
+
+/* =====================================================
+   CARREGAR ÁREAS JURÍDICAS
+   ===================================================== */
+
+async function loadPracticeAreasFromFirebase() {
+
+  if (!firebaseDb) return;
+
+  try {
+
+    const snapshot =
+      await firebaseDb
+        .collection("practice_areas")
+        .where("active", "==", true)
+        .get();
+
+
+    practiceAreas =
+      snapshot.docs
+        .map(function(doc) {
+
+          return {
+            documentId: doc.id,
+            ...doc.data()
+          };
+
+        })
+        .sort(function(a, b) {
+
+          return (
+            Number(a.sort_order || 0) -
+            Number(b.sort_order || 0)
+          );
+
+        });
+
+
+    console.log(
+      "Áreas jurídicas carregadas:",
+      practiceAreas
+    );
+
+
+    renderPracticeAreas();
+
+  } catch (error) {
+
+    console.error(
+      "Erro ao carregar practice_areas:",
+      error
+    );
+  }
+}
+
+
+/* =====================================================
+   CARREGAR MÍDIA
+   ===================================================== */
+
+async function loadMediaFromFirebase() {
+
+  if (!firebaseDb) return;
+
+  try {
+
+    const snapshot =
+      await firebaseDb
+        .collection("media")
+        .where("active", "==", true)
+        .get();
+
+
+    mediaItems =
+      snapshot.docs.map(function(doc) {
+
+        return {
+          documentId: doc.id,
+          ...doc.data()
+        };
+
+      });
+
+
+    console.log(
+      "Mídias carregadas:",
+      mediaItems
+    );
+
+
+    const banner =
+      mediaItems.find(function(item) {
+
+        return (
+          item.type === "banner" ||
+          item.id === "hero"
+        );
+
+      });
+
+
+    const logo =
+      mediaItems.find(function(item) {
+
+        return (
+          item.type === "logo" ||
+          item.id === "logo"
+        );
+
+      });
+
+
+    if (banner && banner.url) {
+
+      settings.heroImage =
+        banner.url;
+
+    }
+
+
+    if (logo && logo.url) {
+
+      settings.logoImage =
+        logo.url;
+
+    }
+
+
+    applySettings();
+
+  } catch (error) {
+
+    console.error(
+      "Erro ao carregar media:",
+      error
+    );
+  }
+}
+
+
+/* =====================================================
+   RENDERIZAR ÁREAS
+   ===================================================== */
+
+function renderPracticeAreas() {
+
+  /*
+     Esta função procura automaticamente
+     um container de áreas jurídicas caso
+     o HTML tenha sido preparado para isso.
+
+     Se o elemento não existir, simplesmente
+     não altera a página.
+  */
+
+  const containers = [
+    document.getElementById("practiceAreas"),
+    document.getElementById("areasGrid"),
+    document.querySelector("[data-practice-areas]")
+  ];
+
+  const container =
+    containers.find(Boolean);
+
+
+  if (!container) {
+
+    return;
 
   }
 
+
+  container.innerHTML = "";
+
+
+  practiceAreas.forEach(function(area) {
+
+    const article =
+      document.createElement("article");
+
+    article.className =
+      "practice-card";
+
+
+    article.innerHTML = `
+      <div class="practice-icon" aria-hidden="true">
+        ${getPracticeIcon(area.icon)}
+      </div>
+
+      <h3>${escapeHtml(area.title || "")}</h3>
+
+      <p>${escapeHtml(area.description || "")}</p>
+    `;
+
+
+    container.appendChild(article);
+
+  });
 }
 
 
 /* =====================================================
-   NORMALIZAR WHATSAPP
+   ÍCONES DAS ÁREAS
    ===================================================== */
 
-function normalizeWhatsapp(value){
+function getPracticeIcon(icon) {
+
+  const icons = {
+
+    scale: `
+      <svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3v18"/>
+        <path d="M5 6h14"/>
+        <path d="M5 6l-3 5h6L5 6z"/>
+        <path d="M19 6l-3 5h6l-3-5z"/>
+        <path d="M8 21h8"/>
+      </svg>
+    `,
+
+    users: `
+      <svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="9" cy="8" r="3"/>
+        <path d="M3 21c0-3.3 2.7-6 6-6s6 2.7 6 6"/>
+        <path d="M16 4.5a3 3 0 010 6"/>
+        <path d="M18 15c2.2.7 3.7 2.7 3.7 6"/>
+      </svg>
+    `,
+
+    landmark: `
+      <svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M3 10h18"/>
+        <path d="M5 10v9"/>
+        <path d="M9 10v9"/>
+        <path d="M15 10v9"/>
+        <path d="M19 10v9"/>
+        <path d="M3 19h18"/>
+        <path d="M12 3l9 5H3l9-5z"/>
+      </svg>
+    `,
+
+    shield: `
+      <svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3l8 3v5c0 5-3.4 8.5-8 10-4.6-1.5-8-5-8-10V6l8-3z"/>
+        <path d="M9 12l2 2 4-4"/>
+      </svg>
+    `,
+
+    briefcase: `
+      <svg viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" stroke-width="1.7"
+        stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="7" width="18" height="13" rx="2"/>
+        <path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/>
+        <path d="M3 12h18"/>
+        <path d="M10 12v2h4v-2"/>
+      </svg>
+    `
+
+  };
+
+
+  return (
+    icons[icon] ||
+    icons.briefcase
+  );
+}
+
+
+/* =====================================================
+   WHATSAPP
+   ===================================================== */
+
+function normalizeWhatsapp(value) {
 
   return String(value || "")
-    .replace(/\D/g,"");
+    .replace(/\D/g, "");
 
 }
 
 
-/* =====================================================
-   URL DO WHATSAPP
-   ===================================================== */
-
-function getWhatsappUrl(message){
+function getWhatsappUrl(message) {
 
   const number =
     normalizeWhatsapp(settings.whatsapp);
 
   const text =
     encodeURIComponent(
-      message || settings.whatsappMessage
+      message ||
+      settings.whatsappMessage
     );
 
-  return `https://wa.me/${number}?text=${text}`;
+  return (
+    `https://wa.me/${number}?text=${text}`
+  );
 
 }
 
@@ -128,7 +577,7 @@ function getWhatsappUrl(message){
    GOOGLE MAPS
    ===================================================== */
 
-function getMapsUrl(){
+function getMapsUrl() {
 
   return (
     "https://www.google.com/maps/dir/?api=1&destination=" +
@@ -142,25 +591,61 @@ function getMapsUrl(){
    E-MAIL
    ===================================================== */
 
-function getEmailUrl(){
+function getEmailUrl() {
 
   const subject =
     encodeURIComponent(
       "Contato pelo site"
     );
 
-  return `mailto:${settings.email}?subject=${subject}`;
+  return (
+    `mailto:${settings.email}?subject=${subject}`
+  );
 
 }
 
 
 /* =====================================================
-   APLICAR DADOS NO SITE
+   FORMATAR WHATSAPP
    ===================================================== */
 
-function applySettings(){
+function formatWhatsapp(value) {
 
-  /* Nome */
+  const digits =
+    normalizeWhatsapp(value);
+
+
+  if (digits.length === 13) {
+
+    return (
+      `(${digits.slice(2, 4)}) ` +
+      `${digits.slice(4, 9)}-` +
+      `${digits.slice(9)}`
+    );
+
+  }
+
+
+  if (digits.length === 12) {
+
+    return (
+      `(${digits.slice(2, 4)}) ` +
+      `${digits.slice(4, 8)}-` +
+      `${digits.slice(8)}`
+    );
+
+  }
+
+
+  return value;
+}
+
+
+/* =====================================================
+   APLICAR CONFIGURAÇÕES
+   ===================================================== */
+
+function applySettings() {
 
   const brandName =
     document.getElementById("brandName");
@@ -169,23 +654,31 @@ function applySettings(){
     document.getElementById("lawyerName");
 
   const footerName =
-    document.querySelector(".footer-brand strong");
+    document.querySelector(
+      ".footer-brand strong"
+    );
 
-  if(brandName){
+
+  if (brandName) {
 
     brandName.textContent =
-      settings.name.replace(/^Dra\.\s*/,"");
+      settings.name.replace(
+        /^Dra\.\s*/,
+        ""
+      );
 
   }
 
-  if(lawyerName){
+
+  if (lawyerName) {
 
     lawyerName.textContent =
       settings.name;
 
   }
 
-  if(footerName){
+
+  if (footerName) {
 
     footerName.textContent =
       settings.name;
@@ -193,22 +686,24 @@ function applySettings(){
   }
 
 
-  /* OAB */
-
   const lawyerOab =
     document.getElementById("lawyerOab");
 
   const footerOab =
-    document.querySelector(".footer-brand small");
+    document.querySelector(
+      ".footer-brand small"
+    );
 
-  if(lawyerOab){
+
+  if (lawyerOab) {
 
     lawyerOab.textContent =
       settings.oab;
 
   }
 
-  if(footerOab){
+
+  if (footerOab) {
 
     footerOab.textContent =
       settings.oab;
@@ -216,12 +711,11 @@ function applySettings(){
   }
 
 
-  /* Título principal */
-
   const heroTitle =
     document.getElementById("heroTitle");
 
-  if(heroTitle){
+
+  if (heroTitle) {
 
     setHeroTitle(
       heroTitle,
@@ -231,12 +725,11 @@ function applySettings(){
   }
 
 
-  /* Imagem principal */
-
   const heroImage =
     document.getElementById("heroImage");
 
-  if(heroImage){
+
+  if (heroImage) {
 
     heroImage.src =
       settings.heroImage;
@@ -244,11 +737,9 @@ function applySettings(){
   }
 
 
-  /* WhatsApp */
-
   document
     .querySelectorAll("[data-whatsapp]")
-    .forEach((element) => {
+    .forEach(function(element) {
 
       element.href =
         getWhatsappUrl();
@@ -262,11 +753,9 @@ function applySettings(){
     });
 
 
-  /* E-mail */
-
   document
     .querySelectorAll("[data-email]")
-    .forEach((element) => {
+    .forEach(function(element) {
 
       element.href =
         getEmailUrl();
@@ -274,11 +763,9 @@ function applySettings(){
     });
 
 
-  /* Google Maps */
-
   document
     .querySelectorAll("[data-maps]")
-    .forEach((element) => {
+    .forEach(function(element) {
 
       element.href =
         getMapsUrl();
@@ -292,20 +779,13 @@ function applySettings(){
     });
 
 
-  /* Telefone no contato */
-
-  const contactWhatsapp =
-    document.querySelector(
-      '[data-whatsapp] .contact-item'
-    );
-
-
   const whatsappSmall =
     document.querySelector(
       '.contact-item[data-whatsapp] small'
     );
 
-  if(whatsappSmall){
+
+  if (whatsappSmall) {
 
     whatsappSmall.textContent =
       settings.whatsappDisplay ||
@@ -314,14 +794,13 @@ function applySettings(){
   }
 
 
-  /* E-mail */
-
   const emailSmall =
     document.querySelector(
       '.contact-item[data-email] small'
     );
 
-  if(emailSmall){
+
+  if (emailSmall) {
 
     emailSmall.textContent =
       settings.email;
@@ -329,14 +808,13 @@ function applySettings(){
   }
 
 
-  /* Endereço */
-
   const addressSmall =
     document.querySelector(
       '.contact-item[data-maps] small'
     );
 
-  if(addressSmall){
+
+  if (addressSmall) {
 
     addressSmall.textContent =
       settings.address;
@@ -344,14 +822,13 @@ function applySettings(){
   }
 
 
-  /* Endereço da caixa do mapa */
-
   const mapAddress =
     document.querySelector(
       ".map-card p"
     );
 
-  if(mapAddress){
+
+  if (mapAddress) {
 
     mapAddress.textContent =
       settings.address;
@@ -359,15 +836,9 @@ function applySettings(){
   }
 
 
-  /* Logo */
-
   applyLogo();
 
-
-  /* Campos do painel */
-
   updateAdminFields();
-
 }
 
 
@@ -375,12 +846,13 @@ function applySettings(){
    TÍTULO PRINCIPAL
    ===================================================== */
 
-function setHeroTitle(element,text){
+function setHeroTitle(element, text) {
 
   const phrase =
     String(text || "").trim();
 
-  if(!phrase){
+
+  if (!phrase) {
 
     element.textContent = "";
 
@@ -389,20 +861,11 @@ function setHeroTitle(element,text){
   }
 
 
-  /*
-     Destaca automaticamente a parte final
-     do título.
-
-     Exemplo:
-
-     Orientação jurídica com
-     seriedade, ética e compromisso.
-  */
-
   const words =
     phrase.split(" ");
 
-  if(words.length < 4){
+
+  if (words.length < 4) {
 
     element.textContent =
       phrase;
@@ -418,61 +881,47 @@ function setHeroTitle(element,text){
       Math.floor(words.length * 0.55)
     );
 
+
   const first =
-    words.slice(0,split).join(" ");
+    words
+      .slice(0, split)
+      .join(" ");
+
 
   const second =
-    words.slice(split).join(" ");
+    words
+      .slice(split)
+      .join(" ");
 
 
   element.innerHTML =
     `${escapeHtml(first)} <em>${escapeHtml(second)}</em>`;
-
 }
 
 
 /* =====================================================
-   PROTEÇÃO BÁSICA DE TEXTO
+   SEGURANÇA DE TEXTO
    ===================================================== */
 
-function escapeHtml(value){
+function escapeHtml(value) {
 
   return String(value)
-    .replace(/&/g,"&amp;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;")
-    .replace(/'/g,"&#039;");
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 
 }
 
 
-/* =====================================================
-   FORMATAR WHATSAPP
-   ===================================================== */
+function escapeAttribute(value) {
 
-function formatWhatsapp(value){
-
-  const digits =
-    normalizeWhatsapp(value);
-
-  /*
-     Formatação brasileira simples.
-  */
-
-  if(digits.length === 13){
-
-    return `(${digits.slice(2,4)}) ${digits.slice(4,9)}-${digits.slice(9)}`;
-
-  }
-
-  if(digits.length === 12){
-
-    return `(${digits.slice(2,4)}) ${digits.slice(4,8)}-${digits.slice(8)}`;
-
-  }
-
-  return value;
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 
 }
 
@@ -481,28 +930,31 @@ function formatWhatsapp(value){
    LOGO
    ===================================================== */
 
-function applyLogo(){
+function applyLogo() {
 
   const mark =
     document.getElementById("brandMark");
 
-  if(!mark){
+
+  if (!mark) {
 
     return;
 
   }
 
 
-  if(settings.logoImage){
+  if (settings.logoImage) {
 
     mark.innerHTML =
-      `<img src="${escapeAttribute(settings.logoImage)}" alt="Logo">`;
+      `<img src="${escapeAttribute(
+        settings.logoImage
+      )}" alt="Logo da Dra. Carolina P. Cury">`;
 
     mark.classList.add(
       "has-logo"
     );
 
-  }else{
+  } else {
 
     mark.textContent =
       "C";
@@ -512,37 +964,22 @@ function applyLogo(){
     );
 
   }
-
 }
 
 
 /* =====================================================
-   ESCAPE PARA ATRIBUTO
+   FORMULÁRIO
    ===================================================== */
 
-function escapeAttribute(value){
-
-  return String(value)
-    .replace(/&/g,"&amp;")
-    .replace(/"/g,"&quot;")
-    .replace(/</g,"&lt;")
-    .replace(/>/g,"&gt;");
-
-}
-
-
-/* =====================================================
-   FORMULÁRIO DE CONTATO
-   ===================================================== */
-
-function setupContactForm(){
+function setupContactForm() {
 
   const form =
     document.getElementById(
       "contactForm"
     );
 
-  if(!form){
+
+  if (!form) {
 
     return;
 
@@ -551,7 +988,7 @@ function setupContactForm(){
 
   form.addEventListener(
     "submit",
-    function(event){
+    function(event) {
 
       event.preventDefault();
 
@@ -596,7 +1033,6 @@ ${mensagem}`;
 
     }
   );
-
 }
 
 
@@ -604,14 +1040,15 @@ ${mensagem}`;
    VOLTAR AO TOPO
    ===================================================== */
 
-function setupBackTop(){
+function setupBackTop() {
 
   const button =
     document.getElementById(
       "backTop"
     );
 
-  if(!button){
+
+  if (!button) {
 
     return;
 
@@ -620,26 +1057,26 @@ function setupBackTop(){
 
   button.addEventListener(
     "click",
-    function(){
+    function() {
 
       window.scrollTo({
-        top:0,
-        behavior:"smooth"
+        top: 0,
+        behavior: "smooth"
       });
 
     }
   );
 
 
-  function updateBackTop(){
+  function updateBackTop() {
 
-    if(window.scrollY > 500){
+    if (window.scrollY > 500) {
 
       button.classList.add(
         "visible"
       );
 
-    }else{
+    } else {
 
       button.classList.remove(
         "visible"
@@ -653,27 +1090,29 @@ function setupBackTop(){
   window.addEventListener(
     "scroll",
     updateBackTop,
-    {passive:true}
+    {
+      passive: true
+    }
   );
 
 
   updateBackTop();
-
 }
 
 
 /* =====================================================
-   SISTEMA DE 5 TOQUES NA LOGO
+   ADMIN — 5 TOQUES
    ===================================================== */
 
-function setupAdminTrigger(){
+function setupAdminTrigger() {
 
   const trigger =
     document.getElementById(
       "adminTrigger"
     );
 
-  if(!trigger){
+
+  if (!trigger) {
 
     return;
 
@@ -681,12 +1120,13 @@ function setupAdminTrigger(){
 
 
   let tapCount = 0;
+
   let tapTimer = null;
 
 
   trigger.addEventListener(
     "click",
-    function(event){
+    function(event) {
 
       event.preventDefault();
 
@@ -700,7 +1140,7 @@ function setupAdminTrigger(){
 
       tapTimer =
         setTimeout(
-          function(){
+          function() {
 
             tapCount = 0;
 
@@ -709,7 +1149,7 @@ function setupAdminTrigger(){
         );
 
 
-      if(tapCount >= 5){
+      if (tapCount >= 5) {
 
         tapCount = 0;
 
@@ -719,7 +1159,6 @@ function setupAdminTrigger(){
 
     }
   );
-
 }
 
 
@@ -727,14 +1166,15 @@ function setupAdminTrigger(){
    ABRIR ADMIN
    ===================================================== */
 
-function openAdmin(){
+function openAdmin() {
 
   const overlay =
     document.getElementById(
       "adminOverlay"
     );
 
-  if(!overlay){
+
+  if (!overlay) {
 
     return;
 
@@ -743,19 +1183,21 @@ function openAdmin(){
 
   updateAdminFields();
 
+
   overlay.classList.add(
     "active"
   );
+
 
   overlay.setAttribute(
     "aria-hidden",
     "false"
   );
 
+
   document.body.classList.add(
     "admin-open"
   );
-
 }
 
 
@@ -763,14 +1205,15 @@ function openAdmin(){
    FECHAR ADMIN
    ===================================================== */
 
-function closeAdmin(){
+function closeAdmin() {
 
   const overlay =
     document.getElementById(
       "adminOverlay"
     );
 
-  if(!overlay){
+
+  if (!overlay) {
 
     return;
 
@@ -781,121 +1224,43 @@ function closeAdmin(){
     "active"
   );
 
+
   overlay.setAttribute(
     "aria-hidden",
     "true"
   );
 
+
   document.body.classList.remove(
     "admin-open"
   );
-
 }
 
 
 /* =====================================================
-   CONTROLES DO ADMIN
+   CAMPOS DO ADMIN
    ===================================================== */
 
-function setupAdmin(){
+function getInputValue(id) {
 
-  const close =
-    document.getElementById(
-      "adminClose"
-    );
-
-  const save =
-    document.getElementById(
-      "saveAdmin"
-    );
-
-  const reset =
-    document.getElementById(
-      "resetAdmin"
-    );
-
-  const overlay =
-    document.getElementById(
-      "adminOverlay"
-    );
+  const element =
+    document.getElementById(id);
 
 
-  if(close){
+  if (!element) {
 
-    close.addEventListener(
-      "click",
-      closeAdmin
-    );
+    return "";
 
   }
 
 
-  if(overlay){
-
-    overlay.addEventListener(
-      "click",
-      function(event){
-
-        if(event.target === overlay){
-
-          closeAdmin();
-
-        }
-
-      }
-    );
-
-  }
-
-
-  document.addEventListener(
-    "keydown",
-    function(event){
-
-      if(
-        event.key === "Escape" &&
-        overlay &&
-        overlay.classList.contains("active")
-      ){
-
-        closeAdmin();
-
-      }
-
-    }
-  );
-
-
-  if(save){
-
-    save.addEventListener(
-      "click",
-      saveAdminSettings
-    );
-
-  }
-
-
-  if(reset){
-
-    reset.addEventListener(
-      "click",
-      resetAdminSettings
-    );
-
-  }
-
-
-  setupImageControls();
-
+  return String(
+    element.value || ""
+  ).trim();
 }
 
 
-/* =====================================================
-   ATUALIZAR CAMPOS DO ADMIN
-   ===================================================== */
-
-function updateAdminFields(){
+function updateAdminFields() {
 
   const fields = {
 
@@ -922,12 +1287,16 @@ function updateAdminFields(){
       settings.whatsappMessage,
 
     adminImageUrl:
-      isExternalImage(settings.heroImage)
+      isExternalImage(
+        settings.heroImage
+      )
         ? settings.heroImage
         : "",
 
     adminLogoUrl:
-      isExternalImage(settings.logoImage)
+      isExternalImage(
+        settings.logoImage
+      )
         ? settings.logoImage
         : ""
 
@@ -935,12 +1304,13 @@ function updateAdminFields(){
 
 
   Object.keys(fields)
-    .forEach(function(id){
+    .forEach(function(id) {
 
       const element =
         document.getElementById(id);
 
-      if(element){
+
+      if (element) {
 
         element.value =
           fields[id] || "";
@@ -955,13 +1325,89 @@ function updateAdminFields(){
       "adminImagePreview"
     );
 
-  if(preview){
+
+  if (preview) {
 
     preview.src =
       settings.heroImage;
 
   }
+}
 
+
+/* =====================================================
+   LOGIN DO ADMIN
+   ===================================================== */
+
+async function ensureAdminLogin() {
+
+  if (!firebaseAuth) {
+
+    return false;
+
+  }
+
+
+  if (firebaseAuth.currentUser) {
+
+    return true;
+
+  }
+
+
+  const email =
+    window.prompt(
+      "E-mail do administrador:"
+    );
+
+
+  if (!email) {
+
+    return false;
+
+  }
+
+
+  const password =
+    window.prompt(
+      "Senha do administrador:"
+    );
+
+
+  if (!password) {
+
+    return false;
+
+  }
+
+
+  try {
+
+    await firebaseAuth
+      .signInWithEmailAndPassword(
+        email.trim(),
+        password
+      );
+
+
+    return true;
+
+
+  } catch (error) {
+
+    console.error(
+      "Erro no login do administrador:",
+      error
+    );
+
+
+    showAdminStatus(
+      "Não foi possível entrar. Confira o e-mail e a senha."
+    );
+
+
+    return false;
+  }
 }
 
 
@@ -969,25 +1415,45 @@ function updateAdminFields(){
    SALVAR ADMIN
    ===================================================== */
 
-function saveAdminSettings(){
+async function saveAdminSettings() {
+
+  const logged =
+    await ensureAdminLogin();
+
+
+  if (
+    firebaseConnected &&
+    !logged
+  ) {
+
+    return;
+
+  }
+
 
   const name =
     getInputValue("adminName");
 
+
   const oab =
     getInputValue("adminOab");
+
 
   const whatsapp =
     getInputValue("adminWhatsapp");
 
+
   const email =
     getInputValue("adminEmail");
+
 
   const address =
     getInputValue("adminAddress");
 
+
   const title =
     getInputValue("adminTitleText");
+
 
   const whatsappMessage =
     getInputValue(
@@ -995,52 +1461,60 @@ function saveAdminSettings(){
     );
 
 
-  if(name){
+  if (name) {
 
     settings.name =
       name;
 
   }
 
-  if(oab){
+
+  if (oab) {
 
     settings.oab =
       oab;
 
   }
 
-  if(whatsapp){
+
+  if (whatsapp) {
 
     settings.whatsappDisplay =
       whatsapp;
 
     settings.whatsapp =
-      normalizeWhatsapp(whatsapp);
+      normalizeWhatsapp(
+        whatsapp
+      );
 
   }
 
-  if(email){
+
+  if (email) {
 
     settings.email =
       email;
 
   }
 
-  if(address){
+
+  if (address) {
 
     settings.address =
       address;
 
   }
 
-  if(title){
+
+  if (title) {
 
     settings.title =
       title;
 
   }
 
-  if(whatsappMessage){
+
+  if (whatsappMessage) {
 
     settings.whatsappMessage =
       whatsappMessage;
@@ -1054,7 +1528,7 @@ function saveAdminSettings(){
     );
 
 
-  if(imageUrl){
+  if (imageUrl) {
 
     settings.heroImage =
       imageUrl;
@@ -1068,7 +1542,7 @@ function saveAdminSettings(){
     );
 
 
-  if(logoUrl){
+  if (logoUrl) {
 
     settings.logoImage =
       logoUrl;
@@ -1076,49 +1550,91 @@ function saveAdminSettings(){
   }
 
 
-  const saved =
+  const localSaved =
     saveSettings();
 
 
   applySettings();
 
 
-  showAdminStatus(
-    saved
-      ? "Alterações salvas neste navegador."
-      : "Não foi possível salvar as alterações."
-  );
+  if (
+    firebaseConnected &&
+    firebaseDb &&
+    firebaseAuth.currentUser
+  ) {
 
-}
+    try {
+
+      await firebaseDb
+        .collection(
+          "site_settings"
+        )
+        .doc(
+          "main"
+        )
+        .set(
+          {
+            name: settings.name,
+            oab: settings.oab,
+            whatsapp: settings.whatsapp,
+            whatsappDisplay:
+              settings.whatsappDisplay,
+            email: settings.email,
+            address: settings.address,
+            title: settings.title,
+            whatsappMessage:
+              settings.whatsappMessage,
+            heroImage:
+              settings.heroImage,
+            logoImage:
+              settings.logoImage,
+            updated_at:
+              firebase.firestore
+                .FieldValue
+                .serverTimestamp()
+          },
+          {
+            merge: true
+          }
+        );
 
 
-/* =====================================================
-   PEGAR VALOR DO INPUT
-   ===================================================== */
+      showAdminStatus(
+        "Alterações salvas no Firebase."
+      );
 
-function getInputValue(id){
 
-  const element =
-    document.getElementById(id);
+    } catch (error) {
 
-  if(!element){
+      console.error(
+        "Erro ao salvar no Firebase:",
+        error
+      );
 
-    return "";
+
+      showAdminStatus(
+        "Salvo localmente, mas houve erro no Firebase."
+      );
+
+    }
+
+  } else {
+
+    showAdminStatus(
+      localSaved
+        ? "Alterações salvas neste navegador."
+        : "Não foi possível salvar."
+    );
 
   }
-
-  return String(
-    element.value || ""
-  ).trim();
-
 }
 
 
 /* =====================================================
-   RESTAURAR PADRÃO
+   RESET ADMIN
    ===================================================== */
 
-function resetAdminSettings(){
+function resetAdminSettings() {
 
   const confirmed =
     window.confirm(
@@ -1126,7 +1642,7 @@ function resetAdminSettings(){
     );
 
 
-  if(!confirmed){
+  if (!confirmed) {
 
     return;
 
@@ -1142,25 +1658,26 @@ function resetAdminSettings(){
 
   applySettings();
 
+
   showAdminStatus(
     "Configurações padrão restauradas."
   );
-
 }
 
 
 /* =====================================================
-   STATUS DO ADMIN
+   STATUS
    ===================================================== */
 
-function showAdminStatus(message){
+function showAdminStatus(message) {
 
   const status =
     document.getElementById(
       "adminStatus"
     );
 
-  if(!status){
+
+  if (!status) {
 
     return;
 
@@ -1178,33 +1695,28 @@ function showAdminStatus(message){
 
   status._timer =
     setTimeout(
-      function(){
+      function() {
 
         status.textContent =
           "";
 
       },
-      4000
+      5000
     );
-
 }
 
 
 /* =====================================================
-   CONTROLE DE IMAGENS
+   CONTROLES DE IMAGEM
    ===================================================== */
 
-function setupImageControls(){
+function setupImageControls() {
 
   const imageUrl =
     document.getElementById(
       "adminImageUrl"
     );
 
-  const imageUpload =
-    document.getElementById(
-      "adminImageUpload"
-    );
 
   const imagePreview =
     document.getElementById(
@@ -1212,19 +1724,23 @@ function setupImageControls(){
     );
 
 
-  if(imageUrl && imagePreview){
+  if (
+    imageUrl &&
+    imagePreview
+  ) {
 
     imageUrl.addEventListener(
       "input",
-      function(){
+      function() {
 
         const value =
           imageUrl.value.trim();
 
-        if(
+
+        if (
           value &&
           isExternalImage(value)
-        ){
+        ) {
 
           imagePreview.src =
             value;
@@ -1237,98 +1753,25 @@ function setupImageControls(){
   }
 
 
-  if(imageUpload){
-
-    imageUpload.addEventListener(
-      "change",
-      function(event){
-
-        const file =
-          event.target.files &&
-          event.target.files[0];
-
-        if(!file){
-
-          return;
-
-        }
-
-
-        if(!file.type.startsWith("image/")){
-
-          showAdminStatus(
-            "Selecione um arquivo de imagem."
-          );
-
-          return;
-
-        }
-
-
-        const reader =
-          new FileReader();
-
-
-        reader.onload =
-          function(){
-
-            const result =
-              reader.result;
-
-            if(imagePreview){
-
-              imagePreview.src =
-                result;
-
-            }
-
-
-            /*
-               A imagem fica salva no localStorage
-               apenas se o usuário clicar em salvar.
-            */
-
-            settings._pendingHeroImage =
-              result;
-
-          };
-
-
-        reader.readAsDataURL(file);
-
-      }
-    );
-
-  }
-
-
-  /* =================================================
-     LOGO
-     ================================================= */
-
   const logoUrl =
     document.getElementById(
       "adminLogoUrl"
     );
 
-  const logoUpload =
-    document.getElementById(
-      "adminLogoUpload"
-    );
 
-
-  if(logoUrl){
+  if (logoUrl) {
 
     logoUrl.addEventListener(
       "input",
-      function(){
+      function() {
 
         const value =
           logoUrl.value.trim();
 
-        if(value){
 
-          settings._pendingLogoImage =
+        if (value) {
+
+          settings.logoImage =
             value;
 
         }
@@ -1337,151 +1780,191 @@ function setupImageControls(){
     );
 
   }
-
-
-  if(logoUpload){
-
-    logoUpload.addEventListener(
-      "change",
-      function(event){
-
-        const file =
-          event.target.files &&
-          event.target.files[0];
-
-        if(!file){
-
-          return;
-
-        }
-
-
-        if(
-          !file.type.startsWith("image/")
-        ){
-
-          showAdminStatus(
-            "Selecione um arquivo de imagem para a logo."
-          );
-
-          return;
-
-        }
-
-
-        const reader =
-          new FileReader();
-
-
-        reader.onload =
-          function(){
-
-            settings._pendingLogoImage =
-              reader.result;
-
-          };
-
-
-        reader.readAsDataURL(file);
-
-      }
-    );
-
-  }
-
 }
 
 
 /* =====================================================
-   PROCESSAR IMAGENS PENDENTES
+   VERIFICAR IMAGEM
    ===================================================== */
 
-function processPendingImages(){
+function isExternalImage(value) {
 
-  if(settings._pendingHeroImage){
-
-    settings.heroImage =
-      settings._pendingHeroImage;
-
-    delete settings._pendingHeroImage;
-
-  }
-
-
-  if(settings._pendingLogoImage){
-
-    settings.logoImage =
-      settings._pendingLogoImage;
-
-    delete settings._pendingLogoImage;
-
-  }
-
-}
-
-
-/* =====================================================
-   VERIFICAR URL DE IMAGEM
-   ===================================================== */
-
-function isExternalImage(value){
-
-  if(!value){
+  if (!value) {
 
     return false;
 
   }
+
 
   return (
     value.startsWith("http://") ||
     value.startsWith("https://") ||
     value.startsWith("data:image/")
   );
-
 }
 
 
 /* =====================================================
-   ATUALIZAR SALVAMENTO
+   ADMIN
    ===================================================== */
 
-const originalSaveAdminSettings =
-  saveAdminSettings;
+function setupAdmin() {
+
+  const close =
+    document.getElementById(
+      "adminClose"
+    );
 
 
-/*
-   Substituímos a função de salvar para garantir
-   que uploads pendentes sejam processados antes
-   do armazenamento.
-*/
+  const save =
+    document.getElementById(
+      "saveAdmin"
+    );
 
-saveAdminSettings = function(){
 
-  processPendingImages();
+  const reset =
+    document.getElementById(
+      "resetAdmin"
+    );
 
-  originalSaveAdminSettings();
 
-};
+  const overlay =
+    document.getElementById(
+      "adminOverlay"
+    );
+
+
+  if (close) {
+
+    close.addEventListener(
+      "click",
+      closeAdmin
+    );
+
+  }
+
+
+  if (overlay) {
+
+    overlay.addEventListener(
+      "click",
+      function(event) {
+
+        if (
+          event.target === overlay
+        ) {
+
+          closeAdmin();
+
+        }
+
+      }
+    );
+
+  }
+
+
+  document.addEventListener(
+    "keydown",
+    function(event) {
+
+      if (
+        event.key === "Escape" &&
+        overlay &&
+        overlay.classList.contains(
+          "active"
+        )
+      ) {
+
+        closeAdmin();
+
+      }
+
+    }
+  );
+
+
+  if (save) {
+
+    save.addEventListener(
+      "click",
+      saveAdminSettings
+    );
+
+  }
+
+
+  if (reset) {
+
+    reset.addEventListener(
+      "click",
+      resetAdminSettings
+    );
+
+  }
+
+
+  setupImageControls();
+}
 
 
 /* =====================================================
-   ANO AUTOMÁTICO
+   ANO
    ===================================================== */
 
-function updateYear(){
+function updateYear() {
 
   const year =
     document.getElementById(
       "year"
     );
 
-  if(year){
+
+  if (year) {
 
     year.textContent =
       new Date().getFullYear();
 
   }
+}
 
+
+/* =====================================================
+   SERVICE WORKER
+   ===================================================== */
+
+function setupServiceWorker() {
+
+  if (
+    "serviceWorker" in navigator
+  ) {
+
+    window.addEventListener(
+      "load",
+      function() {
+
+        navigator.serviceWorker
+          .register("./sw.js")
+          .then(function() {
+
+            console.log(
+              "Service Worker registrado."
+            );
+
+          })
+          .catch(function(error) {
+
+            console.error(
+              "Erro no Service Worker:",
+              error
+            );
+
+          });
+
+      }
+    );
+
+  }
 }
 
 
@@ -1491,7 +1974,7 @@ function updateYear(){
 
 document.addEventListener(
   "DOMContentLoaded",
-  function(){
+  function() {
 
     applySettings();
 
@@ -1504,301 +1987,8 @@ document.addEventListener(
     setupAdmin();
 
     updateYear();
-  }
-);
-/* =====================================================
-   DRA. CAROLINA P. CURY — FIREBASE V3
-   Ponte preparada para Firestore
-   ===================================================== */
 
-window.CAROLINA_FIREBASE_CONFIG =
-  window.CAROLINA_FIREBASE_CONFIG || {
-    apiKey: "",
-    authDomain: "",
-    projectId: "carolinacury-adv",
-    storageBucket: "",
-    messagingSenderId: "",
-    appId: ""
-  };
-
-let firebaseDb = null;
-let firebaseConnected = false;
-
-
-/* =====================================================
-   CARREGAR SDK FIREBASE
-   ===================================================== */
-
-function loadFirebaseScript(src){
-
-  return new Promise(function(resolve, reject){
-
-    if(document.querySelector(
-      'script[src="' + src + '"]'
-    )){
-      resolve();
-      return;
-    }
-
-    const script =
-      document.createElement("script");
-
-    script.src = src;
-    script.onload = resolve;
-    script.onerror = reject;
-
-    document.head.appendChild(script);
-
-  });
-
-}
-
-
-/* =====================================================
-   INICIAR FIREBASE
-   ===================================================== */
-
-async function initializeCarolinaFirebase(){
-
-  const config =
-    window.CAROLINA_FIREBASE_CONFIG;
-
-  if(
-    !config ||
-    !config.apiKey ||
-    !config.projectId ||
-    !config.appId
-  ){
-
-    console.info(
-      "Firebase ainda não configurado. O site continuará usando o armazenamento local."
-    );
-
-    return false;
-
-  }
-
-
-  try{
-
-    await loadFirebaseScript(
-      "https://www.gstatic.com/firebasejs/12.19.0/firebase-app-compat.js"
-    );
-
-    await loadFirebaseScript(
-      "https://www.gstatic.com/firebasejs/12.19.0/firebase-firestore-compat.js"
-    );
-
-
-    if(!firebase.apps.length){
-
-      firebase.initializeApp(config);
-
-    }
-
-
-    firebaseDb =
-      firebase.firestore();
-
-    firebaseConnected = true;
-
-
-    console.log(
-      "Firebase conectado."
-    );
-
-
-    await loadSettingsFromFirebase();
-
-    return true;
-
-
-  }catch(error){
-
-    console.error(
-      "Erro ao conectar ao Firebase:",
-      error
-    );
-
-    firebaseConnected = false;
-
-    return false;
-
-  }
-
-}
-
-
-/* =====================================================
-   CARREGAR CONFIGURAÇÕES DO FIRESTORE
-   ===================================================== */
-
-async function loadSettingsFromFirebase(){
-
-  if(!firebaseDb){
-
-    return;
-
-  }
-
-
-  try{
-
-    const document =
-      await firebaseDb
-        .collection("site_settings")
-        .doc("main")
-        .get();
-
-
-    if(document.exists){
-
-      settings = {
-        ...DEFAULTS,
-        ...document.data()
-      };
-
-
-      applySettings();
-
-
-      console.log(
-        "Configurações carregadas do Firebase."
-      );
-
-    }else{
-
-      console.log(
-        "Documento site_settings/main ainda não existe."
-      );
-
-    }
-
-
-  }catch(error){
-
-    console.error(
-      "Erro ao carregar configurações do Firebase:",
-      error
-    );
-
-  }
-
-}
-
-
-/* =====================================================
-   SALVAR CONFIGURAÇÕES NO FIRESTORE
-   ===================================================== */
-
-async function saveSettingsToFirebase(){
-
-  if(!firebaseDb){
-
-    return false;
-
-  }
-
-
-  try{
-
-    const data = {
-      name: settings.name,
-      oab: settings.oab,
-      whatsapp: settings.whatsapp,
-      whatsappDisplay: settings.whatsappDisplay,
-      email: settings.email,
-      address: settings.address,
-      title: settings.title,
-      whatsappMessage: settings.whatsappMessage,
-      heroImage: settings.heroImage,
-      logoImage: settings.logoImage,
-      updated_at:
-        firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-
-    await firebaseDb
-      .collection("site_settings")
-      .doc("main")
-      .set(
-        data,
-        {
-          merge: true
-        }
-      );
-
-
-    console.log(
-      "Configurações salvas no Firebase."
-    );
-
-
-    return true;
-
-
-  }catch(error){
-
-    console.error(
-      "Erro ao salvar no Firebase:",
-      error
-    );
-
-    return false;
-
-  }
-
-}
-
-
-/* =====================================================
-   SUBSTITUIR SALVAMENTO DO ADMIN
-   ===================================================== */
-
-const oldSaveAdminSettingsV3 =
-  saveAdminSettings;
-
-
-saveAdminSettings = async function(){
-
-  processPendingImages();
-
-
-  oldSaveAdminSettingsV3();
-
-
-  if(firebaseConnected){
-
-    const savedFirebase =
-      await saveSettingsToFirebase();
-
-
-    if(savedFirebase){
-
-      showAdminStatus(
-        "Alterações salvas no Firebase."
-      );
-
-    }else{
-
-      showAdminStatus(
-        "Salvo localmente, mas não foi possível salvar no Firebase."
-      );
-
-    }
-
-  }
-
-};
-
-
-/* =====================================================
-   INICIALIZAÇÃO FIREBASE V3
-   ===================================================== */
-
-document.addEventListener(
-  "DOMContentLoaded",
-  function(){
+    setupServiceWorker();
 
     initializeCarolinaFirebase();
 
